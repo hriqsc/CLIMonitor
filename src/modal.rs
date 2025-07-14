@@ -125,7 +125,7 @@ pub async fn message_keys(
     key : &event::KeyEvent, 
     input_buffer : &mut String, 
     entry: &api_service::Entry, 
-    token: &String, 
+    token: &str, 
     client: &Client,
     config : &Config
 )-> bool{

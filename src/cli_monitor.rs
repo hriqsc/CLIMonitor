@@ -1,9 +1,14 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout}, style::{Modifier, Style}, widgets::{Block, Borders, Cell, Row, Table, Wrap}, Frame
+    crossterm::event::{self, Event, KeyCode}, 
+    layout::{Constraint, Direction, Layout}, 
+    style::{Modifier, Style}, 
+    widgets::{Block, Borders, Cell, Row, Table, Wrap}, 
+    Frame
 };
+use reqwest::Client;
 use std::error::Error;
 use ratatui::style::Color;
-use crate::api_service::Entry;
+use crate::{api_service::{self, Entry}, config, modal};
 
 pub struct CliMonitor {
     pub rows: Vec<Vec<String>>,
@@ -46,79 +51,157 @@ impl CliMonitor {
     pub fn clean(&mut self) {
         self.rows = vec![];
     }
-
-
     pub fn set_modal(&mut self, modal: Modal) {
         self.on_modal = true;
         self.current_modal = modal
     }
+    
+}
 
+pub fn render(monitor : &CliMonitor, f: &mut Frame) -> Result<(), Box<dyn Error>> {
+    let size = f.area();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([Constraint::Percentage(90), Constraint::Percentage(10)].as_ref())
+        .split(size);
 
-    pub fn render(&self, f: &mut Frame) -> Result<(), Box<dyn Error>> {
-        let size = f.area();
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Percentage(90), Constraint::Percentage(10)].as_ref())
-            .split(size);
-
-        let header_cells = ["usuario", "computador", "programa", "ambiente", "tempo de conexão", "tipo de conexão"]
-            .iter()
-            .map(|h| 
-                    Cell::from(*h)
-                            .style(Style::default().add_modifier(Modifier::BOLD))
-            );
-                        
-        let header = Row::new(header_cells).style(Style::default().fg(Color::White).bg(Color::Black));
-
-        let rows = self.rows.iter().enumerate().map(|(i, row)| {
-            let cells = row.iter().map(|col| Cell::from(col.clone()));
-            
-            let mut styled_row = Row::new(cells);
-        
-            if i as i32 == self.selected {
-                styled_row = styled_row.style(Style::default().bg(Color::Gray).fg(Color::Black).add_modifier(Modifier::BOLD));
-            }
-        
-            styled_row
-        });
-
-        let table = Table::new(
-                rows,
-                [
-                    Constraint::Percentage(16),
-                    Constraint::Percentage(16),
-                    Constraint::Percentage(16),
-                    Constraint::Percentage(16),
-                    Constraint::Percentage(18),
-                    Constraint::Percentage(18),
-                ],
-            )
-            .header(header)
-            .block(Block::default().title("CLI Monitor")
-            .border_style(Style::default().fg(Color::Blue))
-            .style(Style::default().add_modifier(Modifier::BOLD))
-            .borders(Borders::ALL))
-            
-            .column_spacing(1);
-
-        f.render_widget(table, chunks[0]);
-
-        let footer = Block::default()
-            .title("comandos")
-            .border_style(Style::default().fg(Color::Yellow))
-            .borders(Borders::ALL);
-        f.render_widget(
-            ratatui::widgets::Paragraph::new("Sair <q>  Desconectar <d>  Mensagem <m>  Mais detalhes <M>  Atualizar <a>")
-                .block(footer)
-                .style(
-                    Style::default()
-                        .add_modifier(Modifier::BOLD)
-                )
-                .wrap(Wrap { trim: true }),
-            chunks[1],
+    let header_cells = ["usuario", "computador", "programa", "ambiente", "tempo de conexão", "tipo de conexão"]
+        .iter()
+        .map(|h| 
+                Cell::from(*h)
+                        .style(Style::default().add_modifier(Modifier::BOLD))
         );
+                    
+    let header = Row::new(header_cells).style(Style::default().fg(Color::White).bg(Color::Black));
 
-        Ok(())
+    let rows = monitor.rows.iter().enumerate().map(|(i, row)| {
+        let cells = row.iter().map(|col| Cell::from(col.clone()));
+        
+        let mut styled_row = Row::new(cells);
+    
+        if i as i32 == monitor.selected {
+            styled_row = styled_row.style(Style::default().bg(Color::Gray).fg(Color::Black).add_modifier(Modifier::BOLD));
+        }
+    
+        styled_row
+    });
+
+    let table = Table::new(
+            rows,
+            [
+                Constraint::Percentage(16),
+                Constraint::Percentage(16),
+                Constraint::Percentage(16),
+                Constraint::Percentage(16),
+                Constraint::Percentage(18),
+                Constraint::Percentage(18),
+            ],
+        )
+        .header(header)
+        .block(Block::default().title("CLI Monitor")
+        .border_style(Style::default().fg(Color::Blue))
+        .style(Style::default().add_modifier(Modifier::BOLD))
+        .borders(Borders::ALL))
+        
+        .column_spacing(1);
+
+    f.render_widget(table, chunks[0]);
+
+    let footer = Block::default()
+        .title("comandos")
+        .border_style(Style::default().fg(Color::Yellow))
+        .borders(Borders::ALL);
+    f.render_widget(
+        ratatui::widgets::Paragraph::new("Sair <q>  Desconectar <d>  Mensagem <m>  Mais detalhes <M>  Atualizar <a>")
+            .block(footer)
+            .style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+            )
+            .wrap(Wrap { trim: true }),
+        chunks[1],
+    );
+
+    Ok(())
+}
+
+
+
+pub async fn user_key_input(
+    monitor : &mut CliMonitor, 
+    entries: &mut Vec<Entry>, 
+    page: &mut i32, 
+    token: &str, 
+    client: &Client, 
+    config: &config::Config, 
+    input_buffer: &mut String,
+) -> bool{
+    match event::read(){
+        Ok(Event::Key(key)) => {
+            if monitor.on_modal {
+                let entry = &entries[monitor.selected as usize];
+        
+                match monitor.current_modal {
+                    Modal::Delete => {
+                        monitor.on_modal = modal::confirm_del_modal(&key, &entry.id, &token, &client, &config).await;
+                    }
+                    Modal::Info => {
+                        monitor.on_modal = modal::more_info_keys(&key).await;
+                    }
+                    Modal::SendMsg => {
+                        monitor.on_modal = modal::message_keys(&key, input_buffer, &entry, token, &client, &config).await;
+                    }
+                    Modal::None => {}
+                }
+                
+                update(&token, &client, *page,  entries,  monitor).await;
+            } else {
+                match key.code {
+                    KeyCode::Char('q') => return false,
+                    KeyCode::Down => {
+                        monitor.selected = (monitor.selected + 1) % monitor.rows.len() as i32;
+                    }
+                    KeyCode::Up => {
+                        if monitor.selected > 0 {
+                            monitor.selected -= 1;
+                        } else {
+                            monitor.selected = monitor.rows.len() as i32 - 1;
+                        }
+                    }
+                    KeyCode::Right => *page += 1,
+                    KeyCode::Left => if *page > 0 { *page -= 1 },
+                    KeyCode::Char('a') => {
+                        update(&token, &client, *page,  entries, monitor).await;
+                    }
+                    KeyCode::Char('d') => {
+                        monitor.set_modal(Modal::Delete);
+                    }
+                    KeyCode::Char('m') => {
+                        monitor.set_modal(Modal::Info);
+                    }
+                    KeyCode::Char('M') => {
+                        monitor.set_modal(Modal::SendMsg);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Err(e) => panic!("Error: {}", e),
+        _ => {}
     }
+    true
+}
+
+
+pub async fn update(
+    token: &str,
+    client: &Client,
+    page: i32,
+    entries: &mut Vec<Entry>,
+    monitor: &mut CliMonitor,
+) {
+    *entries = api_service::get_entries(&token, &client, page, 10).await;
+    monitor.clean();
+    monitor.add_entry_page(&entries);
 }

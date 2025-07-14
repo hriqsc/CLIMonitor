@@ -1,6 +1,6 @@
 use api_service::Entry;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use ratatui::crossterm::event::{self, Event, KeyCode};
+use ratatui::crossterm::event::{self};
 use ratatui::{DefaultTerminal, Frame};
 use reqwest::Client;
 use std::time::Duration;
@@ -53,60 +53,23 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
         }
         
         
-        if let Event::Key(key) = event::read()? {
-            if monitor.on_modal {
-                let entry = &entries[monitor.selected as usize];
-
-                match monitor.current_modal {
-                    cli_monitor::Modal::Delete => {
-                        monitor.on_modal = modal::confirm_del_modal(&key, &entry.id, &token, &client, &config).await;
-                    }
-                    cli_monitor::Modal::Info => {
-                        monitor.on_modal = modal::more_info_keys(&key).await;
-                    }
-                    cli_monitor::Modal::SendMsg => {
-                        monitor.on_modal = modal::message_keys(&key, &mut input_buffer, &entry, &token, &client, &config).await;
-                    }
-                    cli_monitor::Modal::None => {}
-                }
-                
-                update(&token, &client, page, &mut entries, &mut monitor).await;
-            } else {
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Down => {
-                        monitor.selected = (monitor.selected + 1) % monitor.rows.len() as i32;
-                    }
-                    KeyCode::Up => {
-                        if monitor.selected > 0 {
-                            monitor.selected -= 1;
-                        } else {
-                            monitor.selected = monitor.rows.len() as i32 - 1;
-                        }
-                    }
-                    KeyCode::Right => page += 1,
-                    KeyCode::Left => if page > 0 { page -= 1 },
-                    KeyCode::Char('a') => {
-                        update(&token, &client, page, &mut entries, &mut monitor).await;
-                    }
-                    KeyCode::Char('d') => {
-                        monitor.set_modal(cli_monitor::Modal::Delete);
-                    }
-                    KeyCode::Char('m') => {
-                        monitor.set_modal(cli_monitor::Modal::Info);
-                    }
-                    KeyCode::Char('M') => {
-                        monitor.set_modal(cli_monitor::Modal::SendMsg);
-                    }
-                    _ => {}
-                }
-            }
+        let has_exited = cli_monitor::user_key_input(
+            &mut monitor, 
+            &mut entries, 
+            &mut page, 
+            &token, 
+            &client, 
+            &config, 
+            &mut input_buffer
+        ).await;
+        
+        if has_exited {
+            break;
         }
-            
         
         
         if let Ok(Some(_)) = rx.try_recv().map(Some) {
-            update(&token, &client, page, &mut entries, &mut monitor).await;
+            cli_monitor::update(&token, &client, page, &mut entries, &mut monitor).await;
         }
         
         terminal.draw(|f| draw(f, &mut monitor, &entries, &mut input_buffer))?;
@@ -117,20 +80,9 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
     Ok(())
 }
 
-async fn update(
-    token: &str,
-    client: &Client,
-    page: i32,
-    entries: &mut Vec<Entry>,
-    monitor: &mut cli_monitor::CliMonitor,
-) {
-    *entries = api_service::get_entries(&token, &client, page, 10).await;
-    monitor.clean();
-    monitor.add_entry_page(&entries);
-}
 
 fn draw(f: &mut Frame, monitor: &mut cli_monitor::CliMonitor, entries: &Vec<Entry>, input_buffer: &mut String) {
-    if let Err(e) = monitor.render(f) {
+    if let Err(e) = cli_monitor::render(&monitor,f) {
         println!("Error: {}", e);
     }
     
