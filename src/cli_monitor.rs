@@ -8,12 +8,20 @@ use crate::api_service::Entry;
 pub struct CliMonitor {
     pub rows: Vec<Vec<String>>,
     pub selected: i32,
-    pub confirming_disconnect: bool,
+    pub on_modal: bool,
+    pub current_modal : Modal,
+}
+
+pub enum Modal{
+    Delete,
+    Info,
+    SendMsg,
+    None
 }
 
 impl CliMonitor {
     pub fn new() -> Self {
-        Self { rows: vec![], selected: 0 , confirming_disconnect: false}
+        Self { rows: vec![], selected: 0 , on_modal: false, current_modal: Modal::None}
     }
 
     pub fn add_row(&mut self, row: Vec<String>) {
@@ -28,19 +36,23 @@ impl CliMonitor {
             entry.environment.clone(),
             entry.time_up.clone(),
             entry.thread_type.clone(),
-            ]);
+        ]);
     }
     pub fn add_entry_page(&mut self, entries: &Vec<Entry>) {
         for entry in entries {
-            // if entry.active{
-            //     self.add_entry(entry);
-            // }
             self.add_entry(entry)
         }
     }
     pub fn clean(&mut self) {
         self.rows = vec![];
     }
+
+
+    pub fn set_modal(&mut self, modal: Modal) {
+        self.on_modal = true;
+        self.current_modal = modal
+    }
+
 
     pub fn render(&self, f: &mut Frame) -> Result<(), Box<dyn Error>> {
         let size = f.area();
@@ -92,7 +104,6 @@ impl CliMonitor {
 
         f.render_widget(table, chunks[0]);
 
-        // Commands at the bottom
         let footer = Block::default()
             .title("comandos")
             .border_style(Style::default().fg(Color::Yellow))

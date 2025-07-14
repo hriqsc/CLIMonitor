@@ -1,6 +1,8 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use crate::config::Config;
+
 
 
 #[allow(dead_code)]
@@ -46,7 +48,7 @@ struct Page{
 
 pub async fn get_entries(token: &str, client: &Client, page: i32, page_size: i32) -> Vec<Entry>{
     let resp_tr = client
-                .get(format!("http://ip:porta/webmonitor/webmnt?page={page}&pageSize={page_size}"))
+                .get(format!("http://10.70.2.42:2461/webmonitor/webmnt?page={page}&pageSize={page_size}"))
                 .header("Authorization", "token: ".to_string() + token)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
                 .header("Accept", "application/json, text/plain")
@@ -89,12 +91,17 @@ pub struct AuthRequest {
 }
 
 
-pub async fn get_token(client: &Client, request: &AuthRequest) -> String {
+pub async fn get_token(config : &Config, client: &Client) -> String {
+    let request = AuthRequest {
+        login: config.login.clone(),
+        password: config.password.clone(),
+        env: config.enviorment.clone(),
+    };
     let resp = match client
-                .post("http://ip:porta/webmonitor/webmnt/auth")
+                .post(format!("http://{}:{}/webmonitor/webmnt/auth",config.ip,config.porta))
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
                 .header("Accept", "application/json, text/plain")
-                .json(request)
+                .json(&request)
                 .send()
                 .await
     {
@@ -123,9 +130,9 @@ pub async fn get_token(client: &Client, request: &AuthRequest) -> String {
 }
 
 
-pub async fn delete_connection(id: &str, token: &str, client: &Client){
+pub async fn delete_connection(config : &Config,id: &str, token: &str, client: &Client){
     match client
-        .delete("http://ip:porta/webmonitor/webmnt/".to_string() + id)
+        .delete(format!("http://{}:{}/webmonitor/webmnt/{}",config.ip,config.porta,id))
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
         .header("Accept", "application/json, text/plain")
         .header("Authorization", "token: ".to_string() + token)
@@ -137,5 +144,21 @@ pub async fn delete_connection(id: &str, token: &str, client: &Client){
     };
         
     
+}
+
+
+pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, client: &Client){
+    let url = format!("http://{}:{}/webmonitor/webmnt/msg?msg={}&id={}",config.ip,config.porta ,message, id);
+    match client
+        .get(url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
+        .header("Accept", "application/json, text/plain")
+        .header("Authorization", "token: ".to_string() + token)
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => panic!("Error: {}", e),
+    };
 }
 
