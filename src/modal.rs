@@ -141,19 +141,23 @@ pub async fn message_keys(
         },
         KeyCode::Enter => {
             let resp = api_service::send_message(config,&entry.id, &input_buffer, token, &client).await;
-            if resp.status() != 200{
-                let error = match resp.text().await{
-                    Ok(error) => error,
-                    Err(e) => panic!("Error: {}", e),
-                };
-                return Err(MonitorError::SendMsgError(error));
-            }
+            
+            let msg = match resp.message{
+                Some(msg) => msg,
+                None => "".to_string(),
+            };
+
             input_buffer.clear();
-            Ok(false)
+
+            if msg == ""{
+                Ok(false)
+            }else{
+                Err(MonitorError::SendMsgError(msg))
+            }
         },
         KeyCode::Esc => {
             input_buffer.clear();
-            Ok(true)
+            Ok(false)
         },
         _ => Ok(false)
     }

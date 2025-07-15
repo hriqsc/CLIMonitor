@@ -68,8 +68,8 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
                 }
             },
             Err(e) => {
-                //modal::draw_error(f, tittle, message);
                 monitor.error = e;
+                monitor.is_on_error = true;
             }
         };
         

@@ -167,7 +167,7 @@ pub async fn user_key_input(
                         match modal::message_keys(&key, input_buffer, &entry, token, &client, &config).await{
                             Ok(b) => monitor.on_modal = b,
                             Err(e) => {
-                                monitor.on_modal = true;
+                                monitor.on_modal = false;
                                 return Err(e);
                             }
                         };

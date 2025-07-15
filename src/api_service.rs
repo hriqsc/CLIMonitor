@@ -1,4 +1,4 @@
-use reqwest::{Client, Response};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
@@ -46,6 +46,15 @@ struct Page{
     has_next: bool
 }
 
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct MessageResponse{
+    pub level : i32,
+    pub message: Option<String>,
+    pub data: Option<String>,
+}
+
+
 pub async fn get_entries(token: &str, client: &Client, page: i32, page_size: i32) -> Vec<Entry>{
     let resp_tr = client
                 .get(format!("http://10.70.2.42:2461/webmonitor/webmnt?page={page}&pageSize={page_size}"))
@@ -58,16 +67,6 @@ pub async fn get_entries(token: &str, client: &Client, page: i32, page_size: i32
         Ok(resp) => resp,
         Err(e) => panic!("Error: {}", e),
     };
-
-    // let page_raw = match resp.text().await {
-    //     Ok(page) => page,
-    //     Err(e) => panic!("Error: {}", e),
-    // };
-    // println!("{}", page_raw);
-    // let pages : Page = match serde_json::from_str(&page_raw) {
-    //     Ok(pages) => pages,
-    //     Err(e) => panic!("Error: {}", e),
-    // };
 
     let pages : Page = match resp.json().await {
         Ok(pages) => pages,
@@ -109,18 +108,6 @@ pub async fn get_token(config : &Config, client: &Client) -> String {
         Err(e) => panic!("Error: {}", e),
     };
 
-    // let auth_raw = match resp.text().await {
-    //     Ok(auth_raw) => auth_raw,
-    //     Err(e) => panic!("Error: {}", e),
-    // };
-
-    // println!("auth_raw: {}", auth_raw);
-
-    // let auth : AuthResponse = match serde_json::from_str(&auth_raw) {
-    //     Ok(auth) => auth,
-    //     Err(e) => panic!("Error: {}", e),
-    // };
-
     let auth : AuthResponse = match resp.json().await {
         Ok(auth) => auth,
         Err(e) => panic!("Error: {}", e),
@@ -147,8 +134,9 @@ pub async fn delete_connection(config : &Config,id: &str, token: &str, client: &
 }
 
 
-pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, client: &Client) -> Response{
-    let url = format!("http://{}:{}/webmonitor/webmnt/msg?msg={}&id={}",config.ip,config.porta ,message, id);
+pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, client: &Client) -> MessageResponse{
+    let id_param = serde_json::to_string(&vec![id]).unwrap();
+    let url = format!("http://{}:{}/webmonitor/webmnt/msg?msg={}&id={}",config.ip,config.porta ,message, id_param);
     let resp = match client
         .get(url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
@@ -157,9 +145,15 @@ pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, 
         .send()
         .await
     {
-        Ok(resp) => resp,
+        Ok(resp) => resp.json(),
         Err(e) => panic!("Error: {}", e),
     };
-    resp
+
+    let resp_msg = match resp.await {
+        Ok(resp_msg) => resp_msg,
+        Err(e) => panic!("Error: {}", e),
+    };
+    resp_msg
+    
 }
 
