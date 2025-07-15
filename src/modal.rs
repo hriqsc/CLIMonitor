@@ -6,7 +6,7 @@ use ratatui::{
 };
 use reqwest::Client;
 
-use crate::{api_service, config::Config};
+use crate::{api_service, cli_monitor::MonitorError, config::Config};
 
 
 
@@ -74,14 +74,14 @@ pub fn draw_more_info_modal(f: &mut Frame, entry: &api_service::Entry) {
 
     // Tuplas (label1, value1, label2, value2)
     let rows = vec![
-        ("Usuário", Cow::Borrowed(entry.user_name.trim()), "Computador", Cow::Borrowed(entry.machine_name.trim())),
-        ("Thread ID", Cow::Owned(entry.thread_id.to_string()), "Servidor", Cow::Borrowed(entry.server.trim())),
-        ("Programa", Cow::Borrowed(entry.function.trim()), "Ambiente", Cow::Borrowed(entry.environment.trim())),
-        ("Data/Hora", Cow::Borrowed(entry.date_time.trim()), "Tempo de conexão", Cow::Borrowed(entry.time_up.trim())),
-        ("Instruções", Cow::Owned(entry.instructions.to_string()), "Instruções P/s", Cow::Owned(entry.instructions_ps.to_string())),
-        ("Comentários", Cow::Borrowed(entry.comments.trim()), "Memória", Cow::Owned(entry.memory.to_string())),
-        ("SID", Cow::Borrowed(entry.s_id.trim()), "Ctree", Cow::Owned(entry.id_ctree.to_string())),
-        ("Tipo de conexão", Cow::Borrowed(entry.thread_type.trim()), "Tempo inativo", Cow::Borrowed(entry.inactive_time.trim())),
+        ("Usuário",         Cow::Borrowed(entry.user_name.trim()),      "Computador",       Cow::Borrowed(entry.machine_name.trim())),
+        ("Thread ID",       Cow::Owned(entry.thread_id.to_string()),    "Servidor",         Cow::Borrowed(entry.server.trim())),
+        ("Programa",        Cow::Borrowed(entry.function.trim()),       "Ambiente",         Cow::Borrowed(entry.environment.trim())),
+        ("Data/Hora",       Cow::Borrowed(entry.date_time.trim()),      "Tempo de conexão", Cow::Borrowed(entry.time_up.trim())),
+        ("Instruções",      Cow::Owned(entry.instructions.to_string()), "Instruções P/s",   Cow::Owned(entry.instructions_ps.to_string())),
+        ("Comentários",     Cow::Borrowed(entry.comments.trim()),       "Memória",          Cow::Owned(entry.memory.to_string())),
+        ("SID",             Cow::Borrowed(entry.s_id.trim()),           "Ctree",            Cow::Owned(entry.id_ctree.to_string())),
+        ("Tipo de conexão", Cow::Borrowed(entry.thread_type.trim()),    "Tempo inativo",    Cow::Borrowed(entry.inactive_time.trim())),
     ];
 
     fn truncate(s: &str, max: usize) -> String {
@@ -128,27 +128,34 @@ pub async fn message_keys(
     token: &str, 
     client: &Client,
     config : &Config
-)-> bool{
+) -> Result<bool, MonitorError> {
     
     match key.code {
         KeyCode::Char(c) => {
             input_buffer.push(c);
-            true
+            Ok(true)
         },
         KeyCode::Backspace => { 
             input_buffer.pop(); 
-            true
+            Ok(true)
         },
         KeyCode::Enter => {
-            api_service::send_message(config,&entry.id, &input_buffer, token, &client).await;
+            let resp = api_service::send_message(config,&entry.id, &input_buffer, token, &client).await;
+            if resp.status() != 200{
+                let error = match resp.text().await{
+                    Ok(error) => error,
+                    Err(e) => panic!("Error: {}", e),
+                };
+                return Err(MonitorError::SendMsgError(error));
+            }
             input_buffer.clear();
-            false
+            Ok(false)
         },
         KeyCode::Esc => {
             input_buffer.clear();
-            true
+            Ok(true)
         },
-        _ => false
+        _ => Ok(false)
     }
 
 }
@@ -199,4 +206,23 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+
+
+pub fn draw_error(f: &mut Frame,tittle: &str, message: &str) {
+
+    let area = centered_rect(30, 10, f.area());
+    let block = Block::default()
+        .title(tittle)
+        .borders(Borders::ALL)
+        .style(Style::default().fg(Color::White).bg(Color::Red));
+
+    let paragraph = Paragraph::new(Text::from(message))
+        .block(block)
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: false })
+        .style(Style::default().fg(Color::White).bg(Color::Red));
+
+    f.render_widget(paragraph, area);
 }

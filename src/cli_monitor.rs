@@ -15,6 +15,13 @@ pub struct CliMonitor {
     pub selected: i32,
     pub on_modal: bool,
     pub current_modal : Modal,
+    pub error: MonitorError,
+    pub is_on_error: bool,
+}
+
+pub enum MonitorError{
+    None,
+    SendMsgError(String)
 }
 
 pub enum Modal{
@@ -26,7 +33,14 @@ pub enum Modal{
 
 impl CliMonitor {
     pub fn new() -> Self {
-        Self { rows: vec![], selected: 0 , on_modal: false, current_modal: Modal::None}
+        Self { 
+            rows: vec![], 
+            selected: 0 , 
+            on_modal: false, 
+            current_modal: Modal::None, 
+            error: MonitorError::None,
+            is_on_error: false
+        }
     }
 
     pub fn add_row(&mut self, row: Vec<String>) {
@@ -136,7 +150,7 @@ pub async fn user_key_input(
     client: &Client, 
     config: &config::Config, 
     input_buffer: &mut String,
-) -> bool{
+) -> Result<bool, MonitorError> {
     match event::read(){
         Ok(Event::Key(key)) => {
             if monitor.on_modal {
@@ -150,15 +164,33 @@ pub async fn user_key_input(
                         monitor.on_modal = modal::more_info_keys(&key).await;
                     }
                     Modal::SendMsg => {
-                        monitor.on_modal = modal::message_keys(&key, input_buffer, &entry, token, &client, &config).await;
+                        match modal::message_keys(&key, input_buffer, &entry, token, &client, &config).await{
+                            Ok(b) => monitor.on_modal = b,
+                            Err(e) => {
+                                monitor.on_modal = true;
+                                return Err(e);
+                            }
+                        };
                     }
                     Modal::None => {}
                 }
                 
                 update(&token, &client, *page,  entries,  monitor).await;
+            }else if monitor.is_on_error {
+                
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc | KeyCode::Enter => {
+                        monitor.is_on_error = false;
+                        monitor.on_modal = false;
+                        monitor.error = MonitorError::None;
+                    }
+                    _ => {}
+                    
+                }
+            
             } else {
                 match key.code {
-                    KeyCode::Char('q') => return false,
+                    KeyCode::Char('q') => return Ok(true),
                     KeyCode::Down => {
                         monitor.selected = (monitor.selected + 1) % monitor.rows.len() as i32;
                     }
@@ -178,10 +210,10 @@ pub async fn user_key_input(
                         monitor.set_modal(Modal::Delete);
                     }
                     KeyCode::Char('m') => {
-                        monitor.set_modal(Modal::Info);
+                        monitor.set_modal(Modal::SendMsg);
                     }
                     KeyCode::Char('M') => {
-                        monitor.set_modal(Modal::SendMsg);
+                        monitor.set_modal(Modal::Info);
                     }
                     _ => {}
                 }
@@ -190,7 +222,7 @@ pub async fn user_key_input(
         Err(e) => panic!("Error: {}", e),
         _ => {}
     }
-    true
+    Ok(false)
 }
 
 

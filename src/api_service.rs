@@ -1,4 +1,4 @@
-use reqwest::Client;
+use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
@@ -147,9 +147,9 @@ pub async fn delete_connection(config : &Config,id: &str, token: &str, client: &
 }
 
 
-pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, client: &Client){
+pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, client: &Client) -> Response{
     let url = format!("http://{}:{}/webmonitor/webmnt/msg?msg={}&id={}",config.ip,config.porta ,message, id);
-    match client
+    let resp = match client
         .get(url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
         .header("Accept", "application/json, text/plain")
@@ -160,5 +160,6 @@ pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, 
         Ok(resp) => resp,
         Err(e) => panic!("Error: {}", e),
     };
+    resp
 }
 

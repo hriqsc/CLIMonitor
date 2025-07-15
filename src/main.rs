@@ -1,6 +1,5 @@
 use api_service::Entry;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use ratatui::crossterm::event::{self};
 use ratatui::{DefaultTerminal, Frame};
 use reqwest::Client;
 use std::time::Duration;
@@ -47,11 +46,10 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
         }
     });
 
+    terminal.clear()?;
+
     loop {
-        if !event::poll(Duration::from_millis(10))?{
-            continue
-        }
-        
+        terminal.draw(|f| draw(f, &mut monitor, &entries, &mut input_buffer))?;
         
         let has_exited = cli_monitor::user_key_input(
             &mut monitor, 
@@ -63,16 +61,23 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
             &mut input_buffer
         ).await;
         
-        if has_exited {
-            break;
-        }
+        match has_exited {
+            Ok(b) => {
+                if b {
+                    break;
+                }
+            },
+            Err(e) => {
+                //modal::draw_error(f, tittle, message);
+                monitor.error = e;
+            }
+        };
         
         
         if let Ok(Some(_)) = rx.try_recv().map(Some) {
             cli_monitor::update(&token, &client, page, &mut entries, &mut monitor).await;
         }
         
-        terminal.draw(|f| draw(f, &mut monitor, &entries, &mut input_buffer))?;
     }
 
     disable_raw_mode()?;
@@ -84,6 +89,14 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
 fn draw(f: &mut Frame, monitor: &mut cli_monitor::CliMonitor, entries: &Vec<Entry>, input_buffer: &mut String) {
     if let Err(e) = cli_monitor::render(&monitor,f) {
         println!("Error: {}", e);
+    }
+
+    match &monitor.error {
+        cli_monitor::MonitorError::None => {}
+        cli_monitor::MonitorError::SendMsgError(msg) => {
+            modal::draw_error(f, "Erro ao enviar mensagem", &msg);
+        }
+        
     }
     
     if monitor.on_modal {
