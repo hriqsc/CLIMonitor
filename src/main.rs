@@ -28,7 +28,6 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
 
     let token: String = api_service::get_token(&config,&client,).await;
     let mut entries: Vec<Entry> = api_service::get_entries(&token, &client, page, 10).await;
-    monitor.add_entry_page(&entries);
 
     enable_raw_mode()?;
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
@@ -75,7 +74,7 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
         
         
         if let Ok(Some(_)) = rx.try_recv().map(Some) {
-            cli_monitor::update(&token, &client, page, &mut entries, &mut monitor).await;
+            cli_monitor::update(&token, &client, page, &mut entries).await;
         }
         
     }
@@ -87,7 +86,7 @@ async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
 
 
 fn draw(f: &mut Frame, monitor: &mut cli_monitor::CliMonitor, entries: &Vec<Entry>, input_buffer: &mut String) {
-    if let Err(e) = cli_monitor::render(&monitor,f) {
+    if let Err(e) = cli_monitor::render(&monitor, entries,f) {
         println!("Error: {}", e);
     }
 
