@@ -117,9 +117,11 @@ pub async fn get_token(config : &Config, client: &Client) -> String {
 }
 
 
-pub async fn delete_connection(config : &Config,id: &str, token: &str, client: &Client){
+
+pub async fn delete_connections(config : &Config,id: &Vec<String>, token: &str, client: &Client){
+
     match client
-        .delete(format!("http://{}:{}/webmonitor/webmnt/{}",config.ip,config.porta,id))
+        .delete(format!("http://{}:{}/webmonitor/webmnt/{}",config.ip,config.porta,id.join(",")))
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
         .header("Accept", "application/json, text/plain")
         .header("Authorization", "token: ".to_string() + token)
@@ -128,14 +130,12 @@ pub async fn delete_connection(config : &Config,id: &str, token: &str, client: &
     {
         Ok(resp) => resp,
         Err(e) => panic!("Error: {}", e),
-    };
-        
-    
+    };   
 }
 
 
-pub async fn send_message(config : &Config,id: &str, message: &str,token: &str, client: &Client) -> MessageResponse{
-    let id_param = serde_json::to_string(&vec![id]).unwrap();
+pub async fn send_messages(config : &Config,ids: &Vec<String>, message: &str,token: &str, client: &Client) -> MessageResponse{
+    let id_param = serde_json::to_string(&ids).unwrap();
     let url = format!("http://{}:{}/webmonitor/webmnt/msg?msg={}&id={}",config.ip,config.porta ,message, id_param);
     let resp = match client
         .get(url)

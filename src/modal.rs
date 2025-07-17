@@ -13,14 +13,14 @@ use crate::{api_service, cli_monitor::MonitorError, config::Config};
 
 pub async fn confirm_del_modal(
     key : &event::KeyEvent, 
-    entry_id : &str, 
+    entries_id : &Vec<String>, 
     token: &str, 
     client: &Client,
     config : &Config
 )-> bool{
     match key.code {
         KeyCode::Char('s') => {
-            api_service::delete_connection(config,entry_id, &token, &client).await;
+            api_service::delete_connections(config,entries_id, &token, &client).await;
             return true;
         }
         KeyCode::Char('n') => {
@@ -124,7 +124,7 @@ pub fn draw_more_info_modal(f: &mut Frame, entry: &api_service::Entry) {
 pub async fn message_keys(
     key : &event::KeyEvent, 
     input_buffer : &mut String, 
-    entry: &api_service::Entry, 
+    entries: &Vec<String>, 
     token: &str, 
     client: &Client,
     config : &Config
@@ -140,7 +140,7 @@ pub async fn message_keys(
             Ok(true)
         },
         KeyCode::Enter => {
-            let resp = api_service::send_message(config,&entry.id, &input_buffer, token, &client).await;
+            let resp = api_service::send_messages(config,&entries, &input_buffer, token, &client).await;
             
             let msg = match resp.message{
                 Some(msg) => msg,

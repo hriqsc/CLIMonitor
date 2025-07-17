@@ -134,6 +134,16 @@ pub fn render(monitor : &CliMonitor,entries: &Vec<Entry>, f: &mut Frame) -> Resu
 }
 
 
+pub fn selected_hashs_to_vec(monitor : &CliMonitor, entries: &Vec<Entry>) -> Vec<String> {
+    let mut hash_vec: Vec<String> = Vec::new();
+    for hash in monitor.item_hash_set.iter(){
+        hash_vec.push(hash.to_string());
+    }
+    if hash_vec.len() == 0 {
+        hash_vec.push(entries[monitor.selected as usize].id.clone());
+    }
+    hash_vec
+}
 
 pub async fn user_key_input(
     monitor : &mut CliMonitor, 
@@ -147,17 +157,19 @@ pub async fn user_key_input(
     match event::read(){
         Ok(Event::Key(key)) => {
             if monitor.on_modal {
-                let entry = &entries[monitor.selected as usize];
         
                 match monitor.current_modal {
                     Modal::Delete => {
-                        monitor.on_modal = modal::confirm_del_modal(&key, &entry.id, &token, &client, &config).await;
+                        let items  = selected_hashs_to_vec(monitor,entries);
+                        
+                        monitor.on_modal = modal::confirm_del_modal(&key, &items, &token, &client, &config).await;
                     }
                     Modal::Info => {
                         monitor.on_modal = modal::more_info_keys(&key).await;
                     }
                     Modal::SendMsg => {
-                        match modal::message_keys(&key, input_buffer, &entry, token, &client, &config).await{
+                        let items  = selected_hashs_to_vec(monitor,entries);
+                        match modal::message_keys(&key, input_buffer, &items, token, &client, &config).await{
                             Ok(b) => monitor.on_modal = b,
                             Err(e) => {
                                 monitor.on_modal = false;
