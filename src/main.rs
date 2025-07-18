@@ -11,16 +11,22 @@ mod modal;
 mod config;
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
+async fn main() {
     
-    let terminal = ratatui::init();
-    let result = run(terminal);
+    let mut terminal = ratatui::init();
+    let result = run(&mut terminal);
 
     ratatui::restore();
-    result.await
+    match result.await{
+        Ok(_) => {}
+        Err(e) => {
+            terminal.clear().unwrap();
+            println!("Error: {}", e);
+        },
+    }
 }
 
-async fn run(mut terminal: DefaultTerminal) -> std::io::Result<()> {
+async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
     let mut monitor = cli_monitor::CliMonitor::new();
     let mut page = 0;
     let client = Client::new();

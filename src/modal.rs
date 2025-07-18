@@ -21,14 +21,14 @@ pub async fn confirm_del_modal(
     match key.code {
         KeyCode::Char('s') => {
             api_service::delete_connections(config,entries_id, &token, &client).await;
-            return true;
+            return false;
         }
         KeyCode::Char('n') => {
-            return true;
+            return false;
             
         }
         _ => {
-            return false;
+            return true;
         }
     }
 }
