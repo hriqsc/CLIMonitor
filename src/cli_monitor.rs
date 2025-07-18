@@ -6,17 +6,18 @@ use ratatui::{
     Frame
 };
 use reqwest::Client;
-use std::error::Error;
+use std::{collections::HashSet, error::Error};
 use ratatui::style::Color;
 use crate::{api_service::{self, Entry}, config, modal};
 
 pub struct CliMonitor {
-    pub rows: Vec<Vec<String>>,
     pub selected: i32,
     pub on_modal: bool,
     pub current_modal : Modal,
     pub error: MonitorError,
     pub is_on_error: bool,
+    pub is_adding_selected: bool,
+    pub item_hash_set: HashSet<String>,
 }
 
 pub enum MonitorError{
@@ -34,37 +35,16 @@ pub enum Modal{
 impl CliMonitor {
     pub fn new() -> Self {
         Self { 
-            rows: vec![], 
             selected: 0 , 
             on_modal: false, 
             current_modal: Modal::None, 
             error: MonitorError::None,
-            is_on_error: false
+            is_on_error: false,
+            is_adding_selected: false,
+            item_hash_set: HashSet::new(),
         }
     }
 
-    pub fn add_row(&mut self, row: Vec<String>) {
-        self.rows.push(row);
-    }
-
-    pub fn add_entry(&mut self, entry: &Entry) {
-        self.add_row(vec![
-            entry.user_name.clone(),
-            entry.machine_name.clone(),
-            entry.function.clone(),
-            entry.environment.clone(),
-            entry.time_up.clone(),
-            entry.thread_type.clone(),
-        ]);
-    }
-    pub fn add_entry_page(&mut self, entries: &Vec<Entry>) {
-        for entry in entries {
-            self.add_entry(entry)
-        }
-    }
-    pub fn clean(&mut self) {
-        self.rows = vec![];
-    }
     pub fn set_modal(&mut self, modal: Modal) {
         self.on_modal = true;
         self.current_modal = modal
@@ -72,7 +52,7 @@ impl CliMonitor {
     
 }
 
-pub fn render(monitor : &CliMonitor, f: &mut Frame) -> Result<(), Box<dyn Error>> {
+pub fn render(monitor : &CliMonitor,entries: &Vec<Entry>, f: &mut Frame) -> Result<(), Box<dyn Error>> {
     let size = f.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -89,13 +69,25 @@ pub fn render(monitor : &CliMonitor, f: &mut Frame) -> Result<(), Box<dyn Error>
                     
     let header = Row::new(header_cells).style(Style::default().fg(Color::White).bg(Color::Black));
 
-    let rows = monitor.rows.iter().enumerate().map(|(i, row)| {
-        let cells = row.iter().map(|col| Cell::from(col.clone()));
+    let rows = entries.iter().enumerate().map(|(i, row)| {
+        let row_strs = {
+            let mut row_strs = vec![];
+            row_strs.push(row.user_name.clone());
+            row_strs.push(row.machine_name.clone());
+            row_strs.push(row.function.clone());
+            row_strs.push(row.environment.clone());
+            row_strs.push(row.time_up.clone());
+            row_strs.push(row.thread_type.clone());
+            row_strs
+        };
+        let cells = row_strs.iter().map(|col| Cell::from(col.clone()));
         
         let mut styled_row = Row::new(cells);
     
         if i as i32 == monitor.selected {
             styled_row = styled_row.style(Style::default().bg(Color::Gray).fg(Color::Black).add_modifier(Modifier::BOLD));
+        }else if monitor.item_hash_set.contains(&row.id.clone()){
+            styled_row = styled_row.style(Style::default().bg(Color::LightRed).fg(Color::Black).add_modifier(Modifier::BOLD));
         }
     
         styled_row
@@ -116,7 +108,8 @@ pub fn render(monitor : &CliMonitor, f: &mut Frame) -> Result<(), Box<dyn Error>
         .block(Block::default().title("CLI Monitor")
         .border_style(Style::default().fg(Color::Blue))
         .style(Style::default().add_modifier(Modifier::BOLD))
-        .borders(Borders::ALL))
+        .borders(Borders::ALL)
+    )
         
         .column_spacing(1);
 
@@ -127,7 +120,7 @@ pub fn render(monitor : &CliMonitor, f: &mut Frame) -> Result<(), Box<dyn Error>
         .border_style(Style::default().fg(Color::Yellow))
         .borders(Borders::ALL);
     f.render_widget(
-        ratatui::widgets::Paragraph::new("Sair <q>  Desconectar <d>  Mensagem <m>  Mais detalhes <M>  Atualizar <a>")
+        ratatui::widgets::Paragraph::new("Sair <q>  Desconectar <d>  Mensagem <m>  Mais detalhes <M>  Atualizar <a> Des/Seleciona <e> Limpa seleção <E> seleciona varios <tab>")
             .block(footer)
             .style(
                 Style::default()
@@ -141,6 +134,16 @@ pub fn render(monitor : &CliMonitor, f: &mut Frame) -> Result<(), Box<dyn Error>
 }
 
 
+pub fn selected_hashs_to_vec(monitor : &CliMonitor, entries: &Vec<Entry>) -> Vec<String> {
+    let mut hash_vec: Vec<String> = Vec::new();
+    for hash in monitor.item_hash_set.iter(){
+        hash_vec.push(hash.to_string());
+    }
+    if hash_vec.len() == 0 {
+        hash_vec.push(entries[monitor.selected as usize].id.clone());
+    }
+    hash_vec
+}
 
 pub async fn user_key_input(
     monitor : &mut CliMonitor, 
@@ -154,17 +157,19 @@ pub async fn user_key_input(
     match event::read(){
         Ok(Event::Key(key)) => {
             if monitor.on_modal {
-                let entry = &entries[monitor.selected as usize];
         
                 match monitor.current_modal {
                     Modal::Delete => {
-                        monitor.on_modal = modal::confirm_del_modal(&key, &entry.id, &token, &client, &config).await;
+                        let items  = selected_hashs_to_vec(monitor,entries);
+                        
+                        monitor.on_modal = modal::confirm_del_modal(&key, &items, &token, &client, &config).await;
                     }
                     Modal::Info => {
                         monitor.on_modal = modal::more_info_keys(&key).await;
                     }
                     Modal::SendMsg => {
-                        match modal::message_keys(&key, input_buffer, &entry, token, &client, &config).await{
+                        let items  = selected_hashs_to_vec(monitor,entries);
+                        match modal::message_keys(&key, input_buffer, &items, token, &client, &config).await{
                             Ok(b) => monitor.on_modal = b,
                             Err(e) => {
                                 monitor.on_modal = false;
@@ -175,7 +180,7 @@ pub async fn user_key_input(
                     Modal::None => {}
                 }
                 
-                update(&token, &client, *page,  entries,  monitor).await;
+                update(&token, &client, *page,  entries).await;
             }else if monitor.is_on_error {
                 
                 match key.code {
@@ -189,22 +194,42 @@ pub async fn user_key_input(
                 }
             
             } else {
+                let entrie_selected = &entries[monitor.selected as usize];
                 match key.code {
                     KeyCode::Char('q') => return Ok(true),
                     KeyCode::Down => {
-                        monitor.selected = (monitor.selected + 1) % monitor.rows.len() as i32;
+                        monitor.selected = (monitor.selected + 1) % entries.len() as i32;
+                        
+                        
+                        if monitor.is_adding_selected{
+                            let contains = monitor.item_hash_set.contains(&entrie_selected.id.clone());
+                            if contains {
+                                monitor.item_hash_set.remove(&entrie_selected.id.clone());
+                            }else{
+                                monitor.item_hash_set.insert(entrie_selected.id.clone());
+                            }
+                        }
                     }
                     KeyCode::Up => {
                         if monitor.selected > 0 {
                             monitor.selected -= 1;
                         } else {
-                            monitor.selected = monitor.rows.len() as i32 - 1;
+                            monitor.selected = entries.len() as i32 - 1;
+                        }
+
+                        if monitor.is_adding_selected{
+                            let contains = monitor.item_hash_set.contains(&entrie_selected.id.clone());
+                            if contains {
+                                monitor.item_hash_set.remove(&entrie_selected.id.clone());
+                            }else{
+                                monitor.item_hash_set.insert(entrie_selected.id.clone());
+                            }
                         }
                     }
                     KeyCode::Right => *page += 1,
                     KeyCode::Left => if *page > 0 { *page -= 1 },
                     KeyCode::Char('a') => {
-                        update(&token, &client, *page,  entries, monitor).await;
+                        update(&token, &client, *page,  entries).await;
                     }
                     KeyCode::Char('d') => {
                         monitor.set_modal(Modal::Delete);
@@ -215,6 +240,28 @@ pub async fn user_key_input(
                     KeyCode::Char('M') => {
                         monitor.set_modal(Modal::Info);
                     }
+                    KeyCode::Tab => {
+                        if monitor.is_adding_selected{
+                            monitor.item_hash_set.insert(entrie_selected.id.clone());
+                        }else{
+                            monitor.item_hash_set.clear();
+                        }
+                        
+                        monitor.is_adding_selected = !monitor.is_adding_selected;
+                    }
+                    
+                    KeyCode::Char('e') =>{
+                        let contains = monitor.item_hash_set.contains(&entrie_selected.id.clone());
+                        if contains {
+                            monitor.item_hash_set.remove(&entrie_selected.id.clone());
+                        }else{
+                            monitor.item_hash_set.insert(entrie_selected.id.clone());
+                        }
+                    }
+                    KeyCode::Char('E') =>{
+                        monitor.item_hash_set.clear();
+                    }
+
                     _ => {}
                 }
             }
@@ -231,9 +278,6 @@ pub async fn update(
     client: &Client,
     page: i32,
     entries: &mut Vec<Entry>,
-    monitor: &mut CliMonitor,
 ) {
     *entries = api_service::get_entries(&token, &client, page, 10).await;
-    monitor.clean();
-    monitor.add_entry_page(&entries);
 }
