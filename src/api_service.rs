@@ -5,7 +5,6 @@ use crate::config::Config;
 
 
 
-#[allow(dead_code)]
 #[derive(Default,Deserialize)]
 pub struct Entry {
     pub id: String,
@@ -55,6 +54,22 @@ pub struct MessageResponse{
 }
 
 
+/// Makes a GET request to the API to get a page of entries.
+///
+/// # Arguments
+///
+/// * `token` - The authorization token for the API request.
+/// * `client` - The HTTP client used to make the API request.
+/// * `page` - The page number to request.
+/// * `page_size` - The number of entries per page to request.
+///
+/// # Errors
+///
+/// If the request fails, the function will panic with the error message.
+///
+/// # Returns
+///
+/// Returns a vector of `Entry`s.
 pub async fn get_entries(token: &str, client: &Client, page: i32, page_size: i32) -> Vec<Entry>{
     let resp_tr = client
                 .get(format!("http://10.70.2.42:2461/webmonitor/webmnt?page={page}&pageSize={page_size}"))
@@ -90,6 +105,14 @@ pub struct AuthRequest {
 }
 
 
+/// Makes a request to the api to get a token.
+///
+/// This function uses the `login`, `password`, and `enviorment` fields from the given `Config` to
+/// make a POST request to the api to get a token. The token is then returned as a `String`.
+///
+/// # Errors
+///
+/// If the request fails, the function will panic with the error message.
 pub async fn get_token(config : &Config, client: &Client) -> String {
     let request = AuthRequest {
         login: config.login.clone(),
@@ -118,6 +141,20 @@ pub async fn get_token(config : &Config, client: &Client) -> String {
 
 
 
+/// Sends a DELETE request to remove connections based on entry IDs.
+///
+/// This function constructs a DELETE request to the given API endpoint to remove
+/// connections identified by the provided entry IDs. It uses the authorization token
+/// and client configuration details for the request.
+///
+/// # Arguments
+///
+/// * `config` - Configuration containing IP and port for the API endpoint.
+/// * `id` - A vector of entry IDs to be deleted.
+/// * `token` - The authorization token for the API request.
+/// * `client` - The HTTP client used to make the API request.
+///
+
 pub async fn delete_connections(config : &Config,id: &Vec<String>, token: &str, client: &Client){
 
     match client
@@ -134,6 +171,24 @@ pub async fn delete_connections(config : &Config,id: &Vec<String>, token: &str, 
 }
 
 
+/// Sends a message to the given IDs.
+///
+/// This function constructs a GET request to the given API endpoint to send
+/// a message to the given IDs. It uses the authorization token
+/// and client configuration details for the request.
+///
+/// # Arguments
+///
+/// * `config` - Configuration containing IP and port for the API endpoint.
+/// * `ids` - A vector of entry IDs to be sent the message.
+/// * `message` - The message to be sent.
+/// * `token` - The authorization token for the API request.
+/// * `client` - The HTTP client used to make the API request.
+///
+/// # Returns
+///
+/// Returns a `MessageResponse` containing the status of the request and the
+/// message that was sent.
 pub async fn send_messages(config : &Config,ids: &Vec<String>, message: &str,token: &str, client: &Client) -> MessageResponse{
     let id_param = serde_json::to_string(&ids).unwrap();
     let url = format!("http://{}:{}/webmonitor/webmnt/msg?msg={}&id={}",config.ip,config.porta ,message, id_param);

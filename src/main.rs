@@ -16,7 +16,6 @@ async fn main() {
     let mut terminal = ratatui::init();
     let result = run(&mut terminal);
 
-    ratatui::restore();
     match result.await{
         Ok(_) => {}
         Err(e) => {
@@ -24,33 +23,30 @@ async fn main() {
             println!("Error: {}", e);
         },
     }
+    ratatui::restore();
 }
 
+
+
+/// Main entry point of the application. This function will start the application in a full screen terminal.
+///
+/// # Errors
+///
+/// If there is an error drawing the terminal, this function will return an error.
+///
 async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
     let mut monitor = cli_monitor::CliMonitor::new();
     let mut page = 0;
     let client = Client::new();
     let config = config::load_config();
-
-    let token: String = api_service::get_token(&config,&client,).await;
+    let mut token: String = api_service::get_token(&config,&client,).await;
     let mut entries: Vec<Entry> = api_service::get_entries(&token, &client, page, 10).await;
-
-    enable_raw_mode()?;
-    let (tx, mut rx) = mpsc::unbounded_channel::<()>();
-
+    let (tx, mut rx) = mpsc::unbounded_channel::<TimerEvent>();
     let mut input_buffer = String::new();
 
-    tokio::spawn({
-        let tx = tx.clone();
-        async move {
-            let mut ticker = interval(Duration::from_secs(config.refresh_interval_in_secs));
-            loop {
-                ticker.tick().await;
-                let _ = tx.send(());
-            }
-        }
-    });
-
+    enable_raw_mode()?;
+    create_timer(&tx, TimerEvent::Refresh ,Duration::from_secs(config.refresh_interval_in_secs));
+    create_timer(&tx, TimerEvent::Every30Min ,Duration::from_secs(30 * 3600));
     terminal.clear()?;
 
     loop {
@@ -82,6 +78,17 @@ async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         if let Ok(Some(_)) = rx.try_recv().map(Some) {
             cli_monitor::update(&token, &client, page, &mut entries).await;
         }
+
+        if let Ok(Some(event)) = rx.try_recv().map(Some) {
+            match event {
+                TimerEvent::Refresh => {
+                    cli_monitor::update(&token, &client, page, &mut entries).await;
+                },
+                TimerEvent::Every30Min => {
+                    token = api_service::get_token(&config,&client,).await;
+                }
+            }
+        }
         
     }
 
@@ -91,6 +98,19 @@ async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
 }
 
 
+
+/// Renders the terminal interface, including modals if they are active.
+///
+/// This function draws the main interface and handles any errors that occur during rendering.
+/// It also checks if a modal is active and draws the appropriate modal based on the current state
+/// of the `CliMonitor`.
+///
+/// # Arguments
+///
+/// * `f` - The frame to render the interface.
+/// * `monitor` - The CLI monitor state, which tracks the current modal and error state.
+/// * `entries` - A vector of entries representing the data to be displayed.
+/// * `input_buffer` - A buffer containing the user's input for the message modal.
 fn draw(f: &mut Frame, monitor: &mut cli_monitor::CliMonitor, entries: &Vec<Entry>, input_buffer: &mut String) {
     if let Err(e) = cli_monitor::render(&monitor, entries,f) {
         println!("Error: {}", e);
@@ -101,7 +121,6 @@ fn draw(f: &mut Frame, monitor: &mut cli_monitor::CliMonitor, entries: &Vec<Entr
         cli_monitor::MonitorError::SendMsgError(msg) => {
             modal::draw_error(f, "Erro ao enviar mensagem", &msg);
         }
-        
     }
     
     if monitor.on_modal {
@@ -121,4 +140,23 @@ fn draw(f: &mut Frame, monitor: &mut cli_monitor::CliMonitor, entries: &Vec<Entr
             cli_monitor::Modal::None => {}
         }
     }
+}
+
+
+#[derive(Copy, Clone)]
+enum TimerEvent {
+    Refresh,
+    Every30Min,
+}
+fn create_timer(tx : &mpsc::UnboundedSender<TimerEvent>,event : TimerEvent, duration : Duration) {
+    tokio::spawn({
+        let tx = tx.clone();
+        async move {
+            let mut ticker = interval(duration);
+            loop {
+                ticker.tick().await;
+                let _ = tx.send(event);
+            }
+        }
+    });
 }

@@ -52,6 +52,17 @@ impl CliMonitor {
     
 }
 
+/// Renderiza a interface do monitor em uma janela de terminal,
+/// 
+/// # Argumentos
+/// 
+/// * `monitor` - estrutura que contem os dados de estado do monitor
+/// * `entries` - vetor de estruturas que representam as entradas do protheus
+/// * `f` - frame que sera renderizado
+/// 
+/// # Retorno
+/// 
+/// Retorna um `Result` que indica se a renderizacao foi bem sucedida.
 pub fn render(monitor : &CliMonitor,entries: &Vec<Entry>, f: &mut Frame) -> Result<(), Box<dyn Error>> {
     let size = f.area();
     let chunks = Layout::default()
@@ -60,14 +71,20 @@ pub fn render(monitor : &CliMonitor,entries: &Vec<Entry>, f: &mut Frame) -> Resu
         .constraints([Constraint::Percentage(90), Constraint::Percentage(10)].as_ref())
         .split(size);
 
-    let header_cells = ["usuario", "computador", "programa", "ambiente", "tempo de conexão", "tipo de conexão"]
-        .iter()
-        .map(|h| 
+    let header = Row::new(
+        ["usuario", "computador", "programa", "ambiente", "tempo de conexão", "tipo de conexão"]
+            .iter()
+            .map(|h| 
                 Cell::from(*h)
-                        .style(Style::default().add_modifier(Modifier::BOLD))
-        );
+                .style(
+                    Style::default()
+                    .fg(Color::White)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::BOLD)
+                )
+            )
+    );
                     
-    let header = Row::new(header_cells).style(Style::default().fg(Color::White).bg(Color::Black));
 
     let rows = entries.iter().enumerate().map(|(i, row)| {
         let row_strs = {
@@ -94,16 +111,16 @@ pub fn render(monitor : &CliMonitor,entries: &Vec<Entry>, f: &mut Frame) -> Resu
     });
 
     let table = Table::new(
-            rows,
-            [
-                Constraint::Percentage(16),
-                Constraint::Percentage(16),
-                Constraint::Percentage(16),
-                Constraint::Percentage(16),
-                Constraint::Percentage(18),
-                Constraint::Percentage(18),
-            ],
-        )
+        rows,
+        [
+            Constraint::Percentage(16),
+            Constraint::Percentage(16),
+            Constraint::Percentage(16),
+            Constraint::Percentage(16),
+            Constraint::Percentage(18),
+            Constraint::Percentage(18),
+        ],
+    )
         .header(header)
         .block(Block::default().title("CLI Monitor")
         .border_style(Style::default().fg(Color::Blue))
@@ -120,7 +137,7 @@ pub fn render(monitor : &CliMonitor,entries: &Vec<Entry>, f: &mut Frame) -> Resu
         .border_style(Style::default().fg(Color::Yellow))
         .borders(Borders::ALL);
     f.render_widget(
-        ratatui::widgets::Paragraph::new("Sair <q>  Desconectar <d>  Mensagem <m>  Mais detalhes <M>  Atualizar <a> Des/Seleciona <e> Limpa seleção <E> seleciona varios <tab>")
+        ratatui::widgets::Paragraph::new("mudar de pagina < ← → > Sair <q>  Desconectar <d>  Mensagem <m>  Mais detalhes <M>  Atualizar <a> Des/Seleciona <e> Limpa seleção <E> seleciona varios <tab>")
             .block(footer)
             .style(
                 Style::default()
@@ -134,6 +151,9 @@ pub fn render(monitor : &CliMonitor,entries: &Vec<Entry>, f: &mut Frame) -> Resu
 }
 
 
+/// Returns a vector of the selected entries' hashes.
+/// 
+/// If there are no selected entries, it will return a vector with the hash of the currently selected entry.
 pub fn selected_hashs_to_vec(monitor : &CliMonitor, entries: &Vec<Entry>) -> Vec<String> {
     let mut hash_vec: Vec<String> = Vec::new();
     for hash in monitor.item_hash_set.iter(){
@@ -145,6 +165,14 @@ pub fn selected_hashs_to_vec(monitor : &CliMonitor, entries: &Vec<Entry>) -> Vec
     hash_vec
 }
 
+/// Handle user input
+///
+/// This function will handle all the user input. If the user is on a modal, it will handle the modal's input.
+/// If the user is not on a modal, it will handle the main table's input.
+///
+/// The function will return `true` if the user wants to quit and `false` otherwise. If the user wants to quit and there is an error, the function will return an error.
+///
+/// The function will also update the table if the user goes to another page or updates the table.
 pub async fn user_key_input(
     monitor : &mut CliMonitor, 
     entries: &mut Vec<Entry>, 
@@ -200,7 +228,6 @@ pub async fn user_key_input(
                     KeyCode::Down => {
                         monitor.selected = (monitor.selected + 1) % entries.len() as i32;
                         
-                        
                         if monitor.is_adding_selected{
                             let contains = monitor.item_hash_set.contains(&entrie_selected.id.clone());
                             if contains {
@@ -226,8 +253,20 @@ pub async fn user_key_input(
                             }
                         }
                     }
-                    KeyCode::Right => *page += 1,
-                    KeyCode::Left => if *page > 0 { *page -= 1 },
+                    KeyCode::Right => {
+                        if *page < i32::MAX{
+                            *page += 1;
+                            update(&token, &client, *page,  entries).await;
+                        }else{
+                            *page = 0
+                        }
+                    }
+                    KeyCode::Left => {
+                        if *page > 0 { 
+                            *page -= 1;
+                            update(&token, &client, *page,  entries).await;
+                        }
+                    },
                     KeyCode::Char('a') => {
                         update(&token, &client, *page,  entries).await;
                     }
@@ -273,6 +312,16 @@ pub async fn user_key_input(
 }
 
 
+/// Updates the given entries with the data from the api, at the given page.
+///
+/// The given entries vector is replaced with the new data.
+///
+/// # Arguments
+///
+/// * `token`: The token to use for the api request
+/// * `client`: The client to use for the api request
+/// * `page`: The page number to request
+/// * `entries`: The vector of entries to replace with the new data
 pub async fn update(
     token: &str,
     client: &Client,

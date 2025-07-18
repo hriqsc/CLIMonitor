@@ -11,6 +11,26 @@ use crate::{api_service, cli_monitor::MonitorError, config::Config};
 
 
 
+/// Handles key events for the delete confirmation modal.
+///
+/// This function processes key inputs to confirm or cancel the deletion
+/// of connections. If the 's' key is pressed, the function triggers the
+/// deletion of connections using the provided entry IDs and returns false,
+/// indicating the modal should close. If the 'n' key is pressed, it cancels
+/// the deletion and also returns false to close the modal. Any other key
+/// keeps the modal open.
+///
+/// # Arguments
+///
+/// * `key` - The key event to process.
+/// * `entries_id` - A vector of entry IDs to be deleted if confirmed.
+/// * `token` - The authorization token for the API request.
+/// * `client` - The HTTP client used to make the API request.
+/// * `config` - The configuration used for the API request.
+///
+/// # Returns
+///
+/// Returns `false` if the modal should close, and `true` if it should remain open.
 pub async fn confirm_del_modal(
     key : &event::KeyEvent, 
     entries_id : &Vec<String>, 
@@ -33,6 +53,15 @@ pub async fn confirm_del_modal(
     }
 }
 
+/// Renderiza um modal de confirma o para desconectar conex es do Protheus.
+/// 
+/// # Argumentos
+/// 
+/// * `f` - frame que ser  renderizado.
+/// 
+/// # Retorno
+/// 
+/// Nenhum retorno.
 pub fn draw_confirm_del_modal(f: &mut Frame){
     let area = centered_rect(30, 10, f.area());
     let block = Block::default()
@@ -49,6 +78,15 @@ pub fn draw_confirm_del_modal(f: &mut Frame){
 }
 
 
+/// Processa teclas pressionadas enquanto o modal de mais informa es est  aberto.
+/// 
+/// # Argumentos
+/// 
+/// * `key` - tecla pressionada.
+/// 
+/// # Retorno
+/// 
+/// Retorna true se o modal de mais informa es deve permanecer aberto. Caso contr rio, retorna false.
 pub async fn more_info_keys(key : &event::KeyEvent)-> bool{
     
     match key.code {
@@ -62,6 +100,12 @@ pub async fn more_info_keys(key : &event::KeyEvent)-> bool{
 }
 
 
+/// Renderiza um modal com informa es sobre a conex o selecionada.
+/// 
+/// # Argumentos
+/// 
+/// * `f` - frame que ser  renderizado.
+/// * `entry` - estrutura que cont m as informa es sobre a conex o.
 pub fn draw_more_info_modal(f: &mut Frame, entry: &api_service::Entry) {
     let area = centered_rect(40, 30, f.area());
     let block = Block::default()
@@ -121,6 +165,26 @@ pub fn draw_more_info_modal(f: &mut Frame, entry: &api_service::Entry) {
 
 
 
+/// Handles key events for the message sending modal.
+///
+/// This function processes key inputs to control the message sending modal.
+/// Characters are appended to the input buffer, and backspace removes the last character.
+/// The Enter key sends the message using the provided entry IDs and returns a result indicating success or failure.
+/// The Esc key clears the input buffer and closes the modal.
+///
+/// # Arguments
+///
+/// * `key` - The key event to process.
+/// * `input_buffer` - The buffer containing the message to be sent.
+/// * `entries` - A vector of entry IDs to send the message to.
+/// * `token` - The authorization token for the API request.
+/// * `client` - The HTTP client used to make the API request.
+/// * `config` - The configuration used for the API request.
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the modal should remain open, `Ok(false)` if it should close, 
+/// and `Err(MonitorError::SendMsgError)` if there is an error sending the message.
 pub async fn message_keys(
     key : &event::KeyEvent, 
     input_buffer : &mut String, 
@@ -166,6 +230,13 @@ pub async fn message_keys(
 
 
 
+/// Renderiza um modal para enviar uma mensagem para o usu rio.
+///
+/// # Argumentos
+///
+/// * `f` - frame que ser  renderizado.
+/// * `entry` - estrutura que cont m as informa es sobre a conex o.
+/// * `input_buffer` - buffer de entrada com o texto da mensagem que o usu rio est  digitando.
 pub fn draw_send_message_modal(
     f: &mut Frame,
     entry: &api_service::Entry,
@@ -192,6 +263,20 @@ pub fn draw_send_message_modal(
     
 
 
+/// Calculate the position of a centered rect with the given percentage of the area.
+///
+/// The given rect is split into three parts, and the middle part is split again
+/// into three parts. The middle part of the middle part is the return value.
+///
+/// # Arguments
+///
+/// * `percent_x`: Percentage of the x axis for the width of the rect.
+/// * `percent_y`: Percentage of the y axis for the height of the rect.
+/// * `r`: The area to split.
+///
+/// # Returns
+///
+/// The position and size of the centered rect.
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -214,6 +299,13 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
 
 
+/// Renderiza um modal de erro com uma mensagem para o usu rio.
+///
+/// # Argumentos
+///
+/// * `f` - frame que ser  renderizado.
+/// * `tittle` - t tulo do modal.
+/// * `message` - mensagem a ser exibida no modal.
 pub fn draw_error(f: &mut Frame,tittle: &str, message: &str) {
 
     let area = centered_rect(30, 10, f.area());

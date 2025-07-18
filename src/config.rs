@@ -13,11 +13,22 @@ pub struct Config {
 }
 
 
+/// Loads the configuration from a TOML file.
+///
+/// This function attempts to read and parse the configuration data from a `config.toml` file
+/// located in the current directory. If the file does not exist, it creates a new configuration
+/// by prompting the user for input. The function returns a `Config` struct with the loaded
+/// configuration data.
+///
+/// # Panics
+///
+/// This function will panic if there is an error reading the file or parsing the TOML data.
+
 pub fn load_config() -> Config{
     let path = "./config.toml";
 
     if fs::metadata(path).is_err() {
-        println!("Config file not found");
+        println!("config.toml não encontrado");
         create_new_config();
 
     }
@@ -36,6 +47,15 @@ pub fn load_config() -> Config{
 }
 
 
+/// Cria um novo arquivo de configura o.
+///
+/// Essa função é utilizada quando o arquivo de configura o n o existe.
+/// Ela pergunta ao usu rio para digitar as informa es da configura o e
+/// as salva em um novo arquivo de configura o.
+///
+/// # Retorno
+///
+/// Retorna um objeto `Config` com as informa es da configura o.
 pub fn create_new_config() -> Config{
     print!("Digite o login: ");
     let mut login = String::new();
@@ -65,6 +85,13 @@ pub fn create_new_config() -> Config{
     }
 }
 
+/// Reads a string from stdin, echoing each character as `mask` instead of the actual character.
+///
+/// This is useful for reading passwords from the user without echoing the password to the console.
+///
+/// # Return
+///
+/// A `String` containing the input string.
 fn read_with_mask(mask : char) -> String {
     let mut stdout = stdout();
     let mut password = String::new();
