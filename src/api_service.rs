@@ -2,6 +2,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
+use crate::errors::APIError;
 
 
 
@@ -54,6 +55,26 @@ pub struct MessageResponse{
 }
 
 
+
+#[derive(Serialize)]
+pub struct AuthRequest {
+    pub login: String,
+    pub password: String,
+    pub env: String,
+}
+
+#[derive(Deserialize)]
+pub struct AuthResponse {
+    pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct AuthError{
+    pub message: String,
+
+}
+
+
 /// Makes a GET request to the API to get a page of entries.
 ///
 /// # Arguments
@@ -70,9 +91,11 @@ pub struct MessageResponse{
 /// # Returns
 ///
 /// Returns a vector of `Entry`s.
-pub async fn get_entries(token: &str, client: &Client, page: i32, page_size: i32) -> Vec<Entry>{
+pub async fn get_entries(config : &Config,token: &str, client: &Client, page: i32, page_size: i32) -> Result<Vec<Entry>,APIError>{
+    let ip = &config.ip;
+    let porta = &config.porta;
     let resp_tr = client
-                .get(format!("http://10.70.2.42:2461/webmonitor/webmnt?page={page}&pageSize={page_size}"))
+                .get(format!("http://{ip}:{porta}/webmonitor/webmnt?page={page}&pageSize={page_size}"))
                 .header("Authorization", "token: ".to_string() + token)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0")
                 .header("Accept", "application/json, text/plain")
@@ -80,30 +103,17 @@ pub async fn get_entries(token: &str, client: &Client, page: i32, page_size: i32
     
     let resp = match resp_tr {
         Ok(resp) => resp,
-        Err(e) => panic!("Error: {}", e),
+        Err(e) => return Err(APIError::RequestError(e.to_string())),
     };
 
     let pages : Page = match resp.json().await {
         Ok(pages) => pages,
-        Err(e) => panic!("Error: {}", e),
+        Err(e) => return Err(APIError::ParsingError(e.to_string())),
     };
 
-    pages.items
+    Ok(pages.items)
                 
 }
-
-#[derive(Deserialize)]
-struct AuthResponse {
-    token: String,
-}
-
-#[derive(Serialize)]
-pub struct AuthRequest {
-    pub login: String,
-    pub password: String,
-    pub env: String,
-}
-
 
 /// Makes a request to the api to get a token.
 ///
@@ -113,7 +123,7 @@ pub struct AuthRequest {
 /// # Errors
 ///
 /// If the request fails, the function will panic with the error message.
-pub async fn get_token(config : &Config, client: &Client) -> String {
+pub async fn get_token(config : &Config, client: &Client) -> Result<String,APIError> {
     let request = AuthRequest {
         login: config.login.clone(),
         password: config.password.clone(),
@@ -128,15 +138,23 @@ pub async fn get_token(config : &Config, client: &Client) -> String {
                 .await
     {
         Ok(resp) => resp,
-        Err(e) => panic!("Error: {}", e),
+        Err(e) => return Err(APIError::RequestError(e.to_string())),
     };
+
+    if !resp.status().is_success(){
+        let text : AuthError = match resp.json().await {
+            Ok(auth) => auth,
+            Err(e) => return Err(APIError::ParsingError(e.to_string())),
+        };
+        return Err(APIError::AuthFail(text.message));
+    }
 
     let auth : AuthResponse = match resp.json().await {
         Ok(auth) => auth,
-        Err(e) => panic!("Error: {}", e),
+        Err(e) => return Err(APIError::ParsingError(e.to_string())),
     };
 
-    auth.token
+    Ok(auth.token)
 }
 
 
@@ -155,7 +173,7 @@ pub async fn get_token(config : &Config, client: &Client) -> String {
 /// * `client` - The HTTP client used to make the API request.
 ///
 
-pub async fn delete_connections(config : &Config,id: &Vec<String>, token: &str, client: &Client){
+pub async fn delete_connections(config : &Config,id: &Vec<String>, token: &str, client: &Client) -> Option<APIError>{
 
     match client
         .delete(format!("http://{}:{}/webmonitor/webmnt/{}",config.ip,config.porta,id.join(",")))
@@ -165,8 +183,8 @@ pub async fn delete_connections(config : &Config,id: &Vec<String>, token: &str, 
         .send()
         .await
     {
-        Ok(resp) => resp,
-        Err(e) => panic!("Error: {}", e),
+        Ok(_) => return None,
+        Err(e) => return Some(APIError::RequestError(e.to_string())),
     };   
 }
 
@@ -189,8 +207,8 @@ pub async fn delete_connections(config : &Config,id: &Vec<String>, token: &str, 
 ///
 /// Returns a `MessageResponse` containing the status of the request and the
 /// message that was sent.
-pub async fn send_messages(config : &Config,ids: &Vec<String>, message: &str,token: &str, client: &Client) -> MessageResponse{
-    let id_param = serde_json::to_string(&ids).unwrap();
+pub async fn send_messages(config : &Config,ids: &Vec<String>, message: &str,token: &str, client: &Client) -> Result<MessageResponse,APIError>{
+    let id_param = serde_json::to_string(&ids).map_err(|e| APIError::ParsingError(e.to_string()))?;
     let url = format!("http://{}:{}/webmonitor/webmnt/msg?msg={}&id={}",config.ip,config.porta ,message, id_param);
     let resp = match client
         .get(url)
@@ -201,14 +219,14 @@ pub async fn send_messages(config : &Config,ids: &Vec<String>, message: &str,tok
         .await
     {
         Ok(resp) => resp.json(),
-        Err(e) => panic!("Error: {}", e),
+        Err(e) => return Err(APIError::RequestError(e.to_string())),
     };
 
     let resp_msg = match resp.await {
         Ok(resp_msg) => resp_msg,
-        Err(e) => panic!("Error: {}", e),
+        Err(e) => return Err(APIError::AsyncError(e.to_string())),
     };
-    resp_msg
+    Ok(resp_msg)
     
 }
 

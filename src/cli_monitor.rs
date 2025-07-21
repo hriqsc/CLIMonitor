@@ -22,7 +22,7 @@ pub struct CliMonitor {
 
 pub enum MonitorError{
     None,
-    SendMsgError(String)
+    SendMsgError(String),
 }
 
 pub enum Modal{
@@ -208,7 +208,7 @@ pub async fn user_key_input(
                     Modal::None => {}
                 }
                 
-                update(&token, &client, *page,  entries).await;
+                update(config,&token, &client, *page,  entries).await;
             }else if monitor.is_on_error {
                 
                 match key.code {
@@ -256,7 +256,7 @@ pub async fn user_key_input(
                     KeyCode::Right => {
                         if *page < i32::MAX{
                             *page += 1;
-                            update(&token, &client, *page,  entries).await;
+                            update(config,&token, &client, *page,  entries).await;
                         }else{
                             *page = 0
                         }
@@ -264,11 +264,11 @@ pub async fn user_key_input(
                     KeyCode::Left => {
                         if *page > 0 { 
                             *page -= 1;
-                            update(&token, &client, *page,  entries).await;
+                            update(config,&token, &client, *page,  entries).await;
                         }
                     },
                     KeyCode::Char('a') => {
-                        update(&token, &client, *page,  entries).await;
+                        update(config,&token, &client, *page,  entries).await;
                     }
                     KeyCode::Char('d') => {
                         monitor.set_modal(Modal::Delete);
@@ -323,10 +323,17 @@ pub async fn user_key_input(
 /// * `page`: The page number to request
 /// * `entries`: The vector of entries to replace with the new data
 pub async fn update(
+    config: &config::Config,
     token: &str,
     client: &Client,
     page: i32,
     entries: &mut Vec<Entry>,
-) {
-    *entries = api_service::get_entries(&token, &client, page, 10).await;
+){
+    *entries = match api_service::get_entries(config,token, client, page, 10).await{
+        Ok(e) => e,
+        Err(e) => {
+            println!("Error: {}", e);
+            return;
+        }
+    };
 }

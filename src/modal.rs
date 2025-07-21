@@ -2,11 +2,11 @@
 use std::borrow::Cow;
 
 use ratatui::{
-    crossterm::event::{self, KeyCode}, prelude::*, widgets::{Block, Borders, Paragraph, Wrap}
+    crossterm::event::{self, KeyCode}, prelude::*, widgets::{Block, Borders, Paragraph, Wrap}, DefaultTerminal
 };
 use reqwest::Client;
 
-use crate::{api_service, cli_monitor::MonitorError, config::Config};
+use crate::{api_service, cli_monitor::MonitorError, config::Config, errors::TerminalError};
 
 
 
@@ -206,18 +206,26 @@ pub async fn message_keys(
         KeyCode::Enter => {
             let resp = api_service::send_messages(config,&entries, &input_buffer, token, &client).await;
             
-            let msg = match resp.message{
-                Some(msg) => msg,
-                None => "".to_string(),
-            };
-
             input_buffer.clear();
 
-            if msg == ""{
-                Ok(false)
-            }else{
-                Err(MonitorError::SendMsgError(msg))
+            match resp {
+                Ok(resp_msg) => {
+                    let msg = match resp_msg.message{
+                        Some(msg) => msg,
+                        None => "".to_string(),
+                    };
+        
+        
+                    if msg == ""{
+                        Ok(false)
+                    }else{
+                        Err(MonitorError::SendMsgError(msg))
+                    }
+
+                }
+                Err(e) => return Err(MonitorError::SendMsgError(e.to_string())),
             }
+            
         },
         KeyCode::Esc => {
             input_buffer.clear();
@@ -321,4 +329,25 @@ pub fn draw_error(f: &mut Frame,tittle: &str, message: &str) {
         .style(Style::default().fg(Color::White).bg(Color::Red));
 
     f.render_widget(paragraph, area);
+}
+
+
+
+pub fn draw_loading(terminal: &mut DefaultTerminal) -> Result<(), TerminalError>{
+    terminal.draw(|f| {
+        let size = f.area();
+
+        let block = Block::default()
+            .title("Aguarde")
+            .borders(Borders::ALL);
+        
+        let paragraph = Paragraph::new(Line::from(vec![
+            Span::styled("Carregando...", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        ]))
+        .alignment(Alignment::Center)
+        .block(block);
+
+        f.render_widget(paragraph, size);
+    })?;
+    Ok(())
 }

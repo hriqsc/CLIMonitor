@@ -1,7 +1,7 @@
 use api_service::Entry;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use errors::TerminalError;
 use ratatui::{DefaultTerminal, Frame};
-use reqwest::Client;
 use std::time::Duration;
 use tokio::{sync::mpsc, time::interval};
 
@@ -9,21 +9,28 @@ mod cli_monitor;
 mod api_service;
 mod modal;
 mod config;
+mod errors;
 
 #[tokio::main]
 async fn main() {
-    
     let mut terminal = ratatui::init();
     let result = run(&mut terminal);
-
+    
+    let mut has_error : bool = false;
+    let mut error_message : String = String::new();
     match result.await{
         Ok(_) => {}
         Err(e) => {
-            terminal.clear().unwrap();
-            println!("Error: {}", e);
+            has_error = true;
+            error_message = e.to_string();
+            disable_raw_mode().unwrap();
         },
     }
     ratatui::restore();
+
+    if has_error{
+        println!("{}", error_message);
+    }
 }
 
 
@@ -34,13 +41,21 @@ async fn main() {
 ///
 /// If there is an error drawing the terminal, this function will return an error.
 ///
-async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
+async fn run(terminal: &mut DefaultTerminal) -> Result<(), TerminalError> {
+    modal::draw_loading(terminal)?;
+
     let mut monitor = cli_monitor::CliMonitor::new();
     let mut page = 0;
-    let client = Client::new();
-    let config = config::load_config();
-    let mut token: String = api_service::get_token(&config,&client,).await;
-    let mut entries: Vec<Entry> = api_service::get_entries(&token, &client, page, 10).await;
+
+    let config = config::load_config()?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(config.request_timeout_in_secs))
+        .build()?;
+
+    let mut token: String =  api_service::get_token(&config,&client).await?;
+    let mut entries: Vec<Entry> = api_service::get_entries(&config,&token, &client, page, 10).await?;
+
     let (tx, mut rx) = mpsc::unbounded_channel::<TimerEvent>();
     let mut input_buffer = String::new();
 
@@ -49,7 +64,14 @@ async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
     create_timer(&tx, TimerEvent::Every30Min ,Duration::from_secs(30 * 3600));
     terminal.clear()?;
 
+    let ctrl_c = tokio::spawn(async {
+        tokio::signal::ctrl_c().await.unwrap();
+    });
+
     loop {
+        if ctrl_c.is_finished() {
+            break;
+        }
         terminal.draw(|f| draw(f, &mut monitor, &entries, &mut input_buffer))?;
         
         let has_exited = cli_monitor::user_key_input(
@@ -76,16 +98,16 @@ async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         
         
         if let Ok(Some(_)) = rx.try_recv().map(Some) {
-            cli_monitor::update(&token, &client, page, &mut entries).await;
+            cli_monitor::update(&config,&token, &client, page, &mut entries).await;
         }
 
         if let Ok(Some(event)) = rx.try_recv().map(Some) {
             match event {
                 TimerEvent::Refresh => {
-                    cli_monitor::update(&token, &client, page, &mut entries).await;
+                    cli_monitor::update(&config,&token, &client, page, &mut entries).await;
                 },
                 TimerEvent::Every30Min => {
-                    token = api_service::get_token(&config,&client,).await;
+                    token = api_service::get_token(&config,&client).await?;
                 }
             }
         }
@@ -94,6 +116,7 @@ async fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
 
     disable_raw_mode()?;
     terminal.clear()?;
+    ratatui::restore();
     Ok(())
 }
 
