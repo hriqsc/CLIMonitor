@@ -1,28 +1,21 @@
 # CLIMonitor
 
-Uma versão de terminal do WebMonitor do Protheus, projetada para fornecer uma experiência de monitoramento e gerenciamento de conexões do protheus atravez do terminal.
+O CLIMonitor é uma versão de TUI do WebMonitor do Protheus feita em rust projetada para ser simples.
+Ele aproveita a api interna do protheus para o funcionamento interno.
 
-## Funcionalidades
-
-* Monitoramento de conexões de rede em tempo real, similar ao WebMonitor
-* Gerenciamento de conexões do serviço protheus
-* Interface de usuário no terminal, leve e portatil
+![alt text](/resource/climonitor.png)
 
 ## Diferenças em relação ao WebMonitor
 
-* Interface de usuário no terminal, em vez de uma interface web
-* Possibilidade de executar comandos e gerenciar conexões de forma mais rápida e eficiente
-
-## Sobre o CLIMonitor
-
-O CLIMonitor é uma ferramenta feita em rust para fins de melhor controle de conexões em serviços
+* Interface no terminal no lugar do browser
+* Teclas de atalho para ações.
 
 ## Dependências
+Como Buildar
 
-* `reqwest` para fazer requisições HTTP
-* `tokio` para gerenciar a execução assíncrona
-* `ratatui` para criar a interface de usuário em linha de comando
-* `serde` para serializar e deserializar dados
+```bash
+Cargo build --release
+```
 
 ## Licença
 
