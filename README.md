@@ -10,8 +10,7 @@ Ele aproveita a api interna do protheus para o funcionamento interno.
 * Interface no terminal no lugar do browser
 * Teclas de atalho para ações.
 
-## Dependências
-Como Buildar
+## Como Buildar
 
 ```bash
 Cargo build --release
